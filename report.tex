@@ -83,270 +83,185 @@
 	\item 本实验报告以普通版代码为例进行设计的介绍。
 \end{enumerate}	
 \section{设计思路与实现细节}
-\subsection{点类与边类}
+\subsection{点类、边类与图类}
 \begin{enumerate}
-	\item 一个结点需要，还需要。
-	\item 一条边需要，还需要。
+	\item 一个结点需要保存它自身的信息，包括名字、当前距离源的距离，还需要上一次换乘站、从上一次换乘站到此站点的线路以及换乘次数。另外为了之后算法使用，还需要重载小于号运算符。
+	\item 一条边需要其起点和终点的引用，还需要知道自身的权重以及自己是几号线。
+	\item 一个图需要知道自己的点、自己的边，并提供一个边的名字到边在边列表中下标的字典。
 \end{enumerate}
-\lstset{caption={红黑树结点类}}
+\lstset{caption={结点类}}
 \lstset{label={lst:alg1}}
 \begin{lstlisting}[style = Python]
-class RBnode:
-	color = BLACK
-	key = None
-	left = None
-	right = None
-	p = None
-	part = None
-	frequency = None
+class Vertex:
+    def __init__(self, newName):
+        self.name = newName
+        self.d = 10000
+        self.lastChange = None
+        self.lastLine = -1
+        self.changeTime = 0
 
-def __init__(self, newKey=None, newPart=None, newFrequency=None):
-	self.key = newKey
-	self.part = newPart
-	self.frequency = newFrequency
+    def __lt__(self, other):
+        if(self.d != other.d):
+            return self.d < other.d
+        elif(self.changeTime < other.changeTime):
+            return True
+        else:
+            return False
 \end{lstlisting}
-\lstset{caption={NIL结点作为红黑树类的成员变量}}
+\lstset{caption={边类}}
 \lstset{label={lst:alg2}}
 \begin{lstlisting}[style = Python]
-class RBtree:
-    root = RBnode()
-    __nil = RBnode()
+class Edge:
+    def __init__(self, newU, newV, newW, newLine):
+        self.u = newU
+        self.v = newV
+        self.w = newW
+        self.line = newLine
 \end{lstlisting}
-
-\subsection{边的松弛}
-\begin{enumerate}
-	\item 旋转用来调整红黑树的结构，分为左旋与右旋。一般用来帮助其他函数的实现。
-\end{enumerate}
-\lstset{caption={左旋函数}}
+\lstset{caption={图类}}
 \lstset{label={lst:alg3}}
 \begin{lstlisting}[style = Python]
-    def leftRotate(self, x):
-        y = x.right
-        x. right = y.left
-        if(y.left != self.__nil):
-            y.left.p = x
-        y.p = x.p
-        if(x.p == self.__nil):
-            self.root = y
-        elif(x == x.p.left):
-            x.p.left = y
-        else:
-            x.p.right = y
-        y.left = x
-        x.p = y
+class Graph:
+    def __init__(self):
+        self.vertices = []
+        self.edges = []
+        self.dic = {}
+        self.readIn()
 \end{lstlisting}
-\lstset{caption={右旋函数}}
+\subsection{边的松弛}
+\begin{enumerate}
+	\item 边的松弛是最关键的核心代码。作为边类的成员函数，一条边通过比较通过本边去终点和当前去终点的情况，选择其中一种。
+\end{enumerate}
+\lstset{caption={边的松弛函数}}
 \lstset{label={lst:alg4}}
 \begin{lstlisting}[style = Python]
-    def rightRotate(self, y):
-        x = y.left
-        y. left = x.right
-        if(x.right != self.__nil):
-            x.right.p = y
-        x.p = y.p
-        if(y.p == self.__nil):
-            self.root = x
-        elif(y == y.p.left):
-            y.p.left = x
+    def __relaxCore(self):
+        self.v.d = self.u.d + self.w
+        if(self.u.lastLine == self.line):
+            self.v.lastChange = self.u.lastChange
+            self.v.lastLine = self.u.lastLine
+            self.v.changeTime = self.u.changeTime
         else:
-            y.p.right = x
-        x.right = y
-        y.p = x
+            self.v.lastChange = self.u
+            self.v.lastLine = self.line
+            self.v.changeTime = self.u.changeTime + 1
+
+    def relax(self):
+        if((self.u.d + self.w) < self.v.d):
+            self.__relaxCore()
+            return True
+        elif((self.u.d + self.w) == self.v.d):
+            if(self.u.lastLine == self.line):
+                newChangeTime = self.u.changeTime
+            else:
+                newChangeTime = self.u.changeTime + 1
+            if(newChangeTime < self.v.changeTime):
+                self.__relaxCore()
+            return True
+        else:
+            return False    
 \end{lstlisting}
 
 \subsection{Bellman-Ford算法}
 \begin{enumerate}
-	\item 要插入结点z，就从根节点开始向下找到它要插入的位置，认适当的结点做父亲；然后设置自己的两个孩子为NIL，设置自己为红色；最后对自己调用辅助程序insertFixup函数重新着色和旋转，使红黑树整体的性质得以保存。
-	\item 当父亲结点为红色时，这是不行的，就需要继续执行。假定父亲是爷爷的左孩子，insertFixup()函数分三种情况来修正。
-	\item 如果叔叔为红色，就让父亲和叔叔变黑、让爷爷变红，并前往爷爷结点处继续递归。
-	\item 如果叔叔为黑色，且我是右孩子，则前往父亲处左旋。这种情况会转化为下一种情况。
-	\item 如果叔叔为黑色，且我是左孩子，则使父亲变黑，爷爷变红，并在爷爷处右旋。
-	\item 如果父亲是爷爷的右孩子，以上左右互换。
-	\item 最后，将根结点染黑。
+	\item 传统的Bellman-Ford算法的方法是对所有的边进行V-1次松弛。但对于本次PJ来说太慢了，于是我们考虑改进。
+	\item 事实上，在每一轮中，只需要松弛那些以“上一轮有过更新的结点”为起点的边即可。直到没有边可以松弛。
+	\item 最后，Bellman-Ford算法函数作为一个图类的函数存在。
 \end{enumerate}
-\lstset{caption={插入函数}}
+\lstset{caption={Bellman-Ford算法函数}}
 \lstset{label={lst:alg5}}
 \begin{lstlisting}[style = Python]
-    def insertNode(self, z):
-        y = self.__nil
-        x = self.root
-        while(x != self.__nil):
-            y = x
-            if (z.key < x.key):
-                x = x.left
-            elif(z.key > x.key):
-                x = x.right
-            else:
-                print("Key", z.key, "conflict", )
-                return
-        z.p = y
-        if(y == self.__nil):
-            self.root = z
-        elif(z.key < y.key):
-            y.left = z
-        else:
-            y.right = z
-        z.left = self.__nil
-        z.right = self.__nil
-        z.color = RED
-        self.insertFixup(z)
-
-    def insert(self, k, p, f):
-        z = RBnode(k, p, f)
-        self.insertNode(z)    
-\end{lstlisting}
-
-\lstset{caption={insertFixup函数}}
-\lstset{label={lst:alg6}}
-\begin{lstlisting}[style = Python]
-    def insertFixup(self, z):
-        while(z.p.color == RED):
-            y = self.uncle(z)
-            if(y.color == RED):
-                z.p.color = BLACK
-                y.color = BLACK
-                z.p.p.color = RED
-                z = z.p.p
-            else:
-                if(z.p == z.p.p.left):
-                    if(z == z.p.right):
-                        z = z.p
-                        self.leftRotate(z)
-                    z.p.color = BLACK
-                    z.p.p.color = RED
-                    self.rightRotate(z.p.p)
-                else:
-                    if(z == z.p.left):
-                        z = z.p
-                        self.rightRotate(z)
-                    z.p.color = BLACK
-                    z.p.p.color = RED
-                    self.leftRotate(z.p.p)
-        self.root.color = BLACK
+    def bellmanFord(self, name):
+        self.initialize(name)
+        last = []
+        last.append([])
+        last.append([])
+        last[0].append(name)
+        for i in range(0, len(self.dic)):
+            last[1 - (i % 2)] = []
+            for aname in last[i % 2]:
+                for edge in self.edges[self.dic[aname]]:
+                    if(edge.relax() and edge.v.name not in last[1 - (i % 2)]):
+                        last[1 - (i % 2)].append(edge.v.name)   
 \end{lstlisting}
 
 \subsection{Dijkstra算法}
 \begin{enumerate}
-	\item 要删除结点z，要用到辅助函数transplant()，用v子树来替换u子树。
-	\item 删除操作类似于普通搜索树的删除，分为三种情况进行。但是删除之后要使用deleteFixup()函数，通过改变颜色和执行旋转来恢复红黑性质。
-	\item deleteFixup()函数分四种情况来修正。当我是父亲的左子时：
-	\item 如果兄弟红，就染黑它，染红父亲，并在父亲左旋。去新的兄弟处递归执行。
-	\item 如果兄弟黑，且其两孩子都黑，则染红兄弟。去父亲递归执行。
-	\item 如果兄弟w黑，且其子左红右黑，则使其与其左子交换颜色，并在w处右旋。此时进入第四种情况。
-	\item 取新的兄弟w。若兄弟之右子红，则染黑父亲，染黑兄弟右子，在父亲处左旋。
-	\item 如果我是父亲的右孩子，以上左、右互换。
-	\item 最后，将自己染黑。
+	\item 传统的Dijsktra算法的方法是先将所有点都放入一个优先队列中，然后逐个弹出，处理后放到已处理的列表中。
+	\item 本程序将其改进为优先队列内起先只有起点，然后在每一轮中，如果松驰过的边的终点不在队列中也不在处理过的列表中，将其加入队列。
+	\item 最后，Dijkstra算法函数作为一个图类的函数存在。
 \end{enumerate}
-\lstset{caption={删除函数}}
-\lstset{label={lst:alg7}}
+\lstset{caption={Dijkstra算法函数}}
+\lstset{label={lst:alg6}}
 \begin{lstlisting}[style = Python]
-    def delete(self, i):
-        z = self.find(i)
-        if(z == self.__nil):
-            print('Key', i, 'missing')
-            return
-        else:
-            y = z
-            yOriginalColor = y.color
-            if(z.left == self.__nil):
-                x = z.right
-                self.transplant(z, z.right)
-            elif(z.right == self.__nil):
-                x = z.left
-                self.transplant(z, z.left)
-            else:
-                y = self.minimum(z.right)
-                yOriginalColor = y.color
-                x = y.right
-                if(y.p == z):
-                    x.p = y
-                else:
-                    self.transplant(y, y.right)
-                    y.right = z.right
-                    y.right.p = y
-                self.transplant(z, y)
-                y.left = z.left
-                y.left.p = y
-                y.color = z.color
-        if(yOriginalColor == BLACK):
-            self.deleteFixup(x) 
-\end{lstlisting}
-
-\lstset{caption={}}
-\lstset{label={lst:alg8}}
-\begin{lstlisting}[style = Python]
-    def deleteFixup(self, x):
-        while(x != self.root and x.color == BLACK):
-            if(x == x.p.left):
-                w = x.p.right
-                if(w.color == RED):
-                    w.color = BLACK
-                    x.p.color = RED
-                    self.leftRotate(x.p)
-                    w = x.p.right
-                if(w.left.color == BLACK and w.right.color == BLACK):
-                    w.color = RED
-                    x = x.p
-                else:
-                    if(w.right.color == BLACK):
-                        w.left.color = BLACK
-                        w.color = RED
-                        self.rightRotate(w)
-                        w = x.p.right
-                    w.color = x.p.color
-                    x.p.color = BLACK
-                    w.right.color = BLACK
-                    self.leftRotate(x.p)
-                    x = self.root
-            else:
-                w = x.p.left
-                if(w.color == RED):
-                    w.color = BLACK
-                    x.p.color = RED
-                    self.rightRotate(x.p)
-                    w = x.p.left
-                if(w.right.color == BLACK and w.left.color == BLACK):
-                    w.color = RED
-                    x = x.p
-                else:
-                    if(w.left.color == BLACK):
-                        w.right.color = BLACK
-                        w.color = RED
-                        self.leftRotate(w)
-                        w = x.p.left
-                    w.color = x.p.color
-                    x.p.color = BLACK
-                    w.left.color = BLACK
-                    self.rightRotate(x.p)
-                    x = self.root
-        x.color = BLACK
-\end{lstlisting}
-\lstset{caption={transplant函数}}
-\lstset{label={lst:alg9}}
-\begin{lstlisting}[style = Python]
-    def transplant(self, u, v):
-        if(u.p == self.__nil):
-            self.root = v
-        elif(u == u.p.left):
-            u.p.left = v
-        else:
-            u.p.right = v
-        v.p = u.p  
+    def dijkstra(self, name):
+        self.initialize(name)
+        a = []
+        b = []
+        b.append(self.vertices[self.dic[name]])
+        while(len(b) > 0):
+            b.sort()
+            u = b[0]
+            b.pop(0)
+            a.append(u)
+            for edge in self.edges[self.dic[u.name]]:
+                if(edge.v not in a):
+                    edge.relax()
+                    if(edge.v not in b):
+                        b.append(edge.v)   
 \end{lstlisting}
 
 
 \subsection{打印路线、时间与换乘次数}
 \begin{enumerate}
-	\item 其他函数的实现大体基于以上核心函数，完成了各种功能。具体请参见源代码。
-	\item 另外还配套了文件读入等辅助函数，帮助实现本PJ要求的功能。
+	\item 因为已经在每一站的结点，都保存了上一次换乘站、从上一次换乘站到此站点的线路，所以打印线路是容易的。
+	\item 另外换乘次数与时间长短不同，不具有无后效性的动态规划性质。为了正确计算出换乘次数，在读入线路时将各条地铁线路都补成了完全图，为此只需改变读入图的函数readIn()，请参见源代码，不加赘述。
+\lstset{caption={导航，并打印路线、时间与换乘次数（以Bellman-Ford为例）}}
+\lstset{label={lst:alg7}}
+\begin{lstlisting}[style = Python]
+    def getRouteContinue(self, endStation):
+        k = self.dic[endStation]
+        now = self.vertices[k]
+        ans = now.name
+        if(now.lastChange is None):
+            ans = "-Line " + str(self.edges[self.dic[endStation]][0].line) + \
+             "-" + ans
+        while(now.lastChange is not None):
+            if(now.lastChange.lastChange is not None):
+                ans = now.lastChange.name + "-Line " + \
+                    str(now.lastLine) + "-" + ans
+            else:
+                ans = "-Line " + \
+                    str(now.lastLine) + "-" + ans
+            now = now.lastChange
+        return ans
+
+    def navigateBellmanFord(self, line):
+        all = line.split()
+        totalChangeTimes = 0
+        totalTime = 0
+        totalRoute = all[0]
+        if(len(all) < 2):
+            print("Please enter at least two stations!")
+            return
+        for i in range(0, len(all)-1):
+            myGraph.bellmanFord(all[i])
+            totalRoute = totalRoute + myGraph.getRouteContinue(all[i+1])
+            totalTime = totalTime + myGraph.getTime(all[i+1])
+            totalChangeTimes = totalChangeTimes + \
+                myGraph.getChangeTimes(all[i+1])
+        print(totalRoute)
+        print("Expected time:", totalTime, "minutes")
+        print("Expected to change:", totalChangeTimes, "times")
+\end{lstlisting}	
 \end{enumerate}
 
 
 \section{用户UI的设计与实现}
 \begin{enumerate}
 	\item 用户UI基于python的tkinter库。
-	\item 创建了输入输出框并绑定函数事件，让UI类拥有一棵树的对象，代用户操作这棵树。
-	\item UI实现请参见源代码，不加赘述。
+	\item 创建了输入输出框并绑定函数事件，让UI类拥有一个图的对象，代用户操作这幅图。
+	\item UI实现代码多但不含算法相关内容，请参见源代码，不加赘述。
 \end{enumerate}	
 
 \end{document}

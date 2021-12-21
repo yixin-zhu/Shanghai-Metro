@@ -145,7 +145,8 @@ class Graph:
         now = self.vertices[k]
         ans = now.name
         if(now.lastChange is None):
-            ans = "-Line " + str(self.edges[self.dic[endStation]][0].line) + "-" + ans
+            ans = "-Line " + \
+                str(self.edges[self.dic[endStation]][0].line) + "-" + ans
         while(now.lastChange is not None):
             if(now.lastChange.lastChange is not None):
                 ans = now.lastChange.name + "-Line " + \
